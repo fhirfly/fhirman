@@ -1,0 +1,355 @@
+{
+	"info": {
+		"_postman_id": "39289123-2798-48fd-9ef9-b9a36ad8a56d",
+		"name": "FHIRMan Bulk",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Security",
+			"item": [
+				{
+					"name": "Install JSRSA",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"postman.setGlobalVariable(\"jsrsasign-js\", responseBody);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://kjur.github.io/jsrsasign/jsrsasign-latest-all-min.js",
+							"protocol": "http",
+							"host": [
+								"kjur",
+								"github",
+								"io"
+							],
+							"path": [
+								"jsrsasign",
+								"jsrsasign-latest-all-min.js"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SMART config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/.well-known/smart-configuration",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								".well-known",
+								"smart-configuration"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Access Token",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"\r",
+									"var navigator = {}; //fake a navigator object for the lib\r",
+									"var window = {}; //fake a window object for the lib\r",
+									"eval(postman.getGlobalVariable(\"jsrsasign-js\")); //import jsrsasign lib\r",
+									"\r",
+									"// Set headers for JWT\r",
+									"var header = {\r",
+									"\t'typ': 'JWT',\r",
+									"\t'alg': 'RS384'\r",
+									"};\r",
+									"\r",
+									"// Prepare timestamp in seconds\r",
+									"var currentTimestamp = Math.floor(Date.now() / 1000)\r",
+									"var uuid = require('uuid'); //- To load the uuid module of JS in the variable uuid. Require is used in JS to load a module.\r",
+									"var myUUID = uuid.v4(); //- version 4 of UUID from the module loaded in the previous step is saved in variable myUUID.\r",
+									"//console.log(myUUID);\r",
+									"\r",
+									"var data = {\r",
+									"\t'iss': pm.environment.get('CLIENT_ID') || '',\r",
+									"\t'sub': pm.environment.get('CLIENT_ID') || '',\r",
+									"    'aud': pm.environment.get('TOKEN_URL'),\r",
+									"\t'exp': currentTimestamp + 299, // expiry time is 30 seconds from time of creation\r",
+									"\t'jti': myUUID\r",
+									"}\r",
+									"\r",
+									"var secret = postman.getEnvironmentVariable(\"jwt_secret\");\r",
+									"var sHeader = JSON.stringify(header);\r",
+									"var sPayload = JSON.stringify(data);\r",
+									"\r",
+									"//console.log(sHeader)\r",
+									"//console.log(sPayload)\r",
+									"//console.log(secret)\r",
+									"\r",
+									"var sJWT =  KJUR.jws.JWS.sign('RS384', sHeader, sPayload, secret);\r",
+									"console.log(sJWT)\r",
+									"postman.setEnvironmentVariable(\"jwt_signed\", sJWT);\r",
+									""
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var data = JSON.parse(responseBody);\r",
+									"postman.setEnvironmentVariable(\"access_token\", data.access_token);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "grant_type",
+									"value": "client_credentials",
+									"type": "default"
+								},
+								{
+									"key": "client_assertion_type",
+									"value": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+									"type": "default"
+								},
+								{
+									"key": "client_assertion",
+									"value": "{{jwt_signed}}",
+									"type": "default"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{TOKEN_URL}}",
+							"host": [
+								"{{TOKEN_URL}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Bulk FHIR",
+			"item": [
+				{
+					"name": "Bulk Data Kick-off",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"//pm.environment.set(\"Bulk_Status_Request_URL\") = pm.response.header(\"Content-Location\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"disabledSystemHeaders": {
+							"accept": true
+						}
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json",
+								"type": "text"
+							},
+							{
+								"key": "Prefer",
+								"value": "respond-async",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/fhir+json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{BASE_URL}}/Group/{{group_id}}/$export?_type=AllergyIntolerance,Binary,CarePlan,Condition,Consent,Coverage,Device,DiagnosticReport,DocumentReference,Encounter,ExplanationOfBenefit,FamilyMemberHistory,Immunization,Location,MedicationRequest,Observation,Organization,Patient,Procedure,ServiceRequest",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"Group",
+								"{{group_id}}",
+								"$export"
+							],
+							"query": [
+								{
+									"key": "_type",
+									"value": "AllergyIntolerance,Binary,CarePlan,Condition,Consent,Coverage,Device,DiagnosticReport,DocumentReference,Encounter,ExplanationOfBenefit,FamilyMemberHistory,Immunization,Location,MedicationRequest,Observation,Organization,Patient,Procedure,ServiceRequest"
+								},
+								{
+									"key": "includeAssociatedData",
+									"value": null,
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Check Bulk Request Status",
+					"protocolProfileBehavior": {
+						"disabledSystemHeaders": {
+							"accept": true
+						}
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{Bulk_Status_Request_URL}}",
+							"host": [
+								"{{Bulk_Status_Request_URL}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Bulk Request",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/BulkRequest/{{job_id}}",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"BulkRequest",
+								"{{job_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Download bulk file",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{download_url}}",
+							"host": [
+								"{{download_url}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "CapabilityStatement",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept": true
+				}
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/fhir+json",
+						"type": "default"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/metadata",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"metadata"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}
